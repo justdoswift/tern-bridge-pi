@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { PiBridge } from '../src/backend.js';
+import { skillFixture } from './skill-fixture.js';
 
 export interface PeerHarness {
   root: string;
@@ -47,6 +48,7 @@ const models = [
  { id: 'model/one', provider: 'provider/one', name: 'Image model', reasoning: true, input: ['text', 'image'], contextWindow: 200000 },
  { id: 'plain', provider: 'provider-two', name: 'Text model', reasoning: false, input: ['text'], contextWindow: 10000 }
 ];
+const skillPrompt = ${JSON.stringify(skillFixture())};
 let model = models[0], thinkingLevel = 'medium', file, header, entries = [], leafId = null;
 let serial = 0, streaming = false, compacted = false, queued = [], cancelNext = false, late = null, controlledPrompt = null;
 const out = record => process.stdout.write(JSON.stringify(record) + '\n');
@@ -75,6 +77,10 @@ function fresh(copy = []) {
 function append(message) {
  const entry = { type: 'message', id: 'entry-' + ++serial, parentId: leafId, timestamp: new Date(message.timestamp).toISOString(), message };
  entries.push(entry); leafId = entry.id; persist();
+}
+function userText(content) {
+ if (typeof content === 'string') return content;
+ return content.filter(block => block.type === 'text').map(block => block.text).join('');
 }
 function settle() { streaming = false; out({ type: 'agent_settled', aborted: false }); }
 function messages() {
@@ -122,7 +128,7 @@ async function command(c) {
  case 'set_model': model = models.find(m => m.id === c.modelId && m.provider === c.provider); return model ? respond(c, model) : respond(c, null, false);
  case 'set_thinking_level': thinkingLevel = c.level; out({ type: 'thinking_level_changed', level: c.level }); return respond(c);
  case 'set_session_name': entries.push({ type: 'session_info', id: 'name-' + ++serial, parentId: leafId, timestamp: new Date().toISOString(), name: c.name.trim() }); leafId = entries.at(-1).id; persist(); return respond(c);
- case 'get_fork_messages': return respond(c, { messages: branch().filter(e => e.type === 'message' && e.message.role === 'user').map(e => ({ entryId: e.id, text: e.message.content })) });
+ case 'get_fork_messages': return respond(c, { messages: branch().filter(e => e.type === 'message' && e.message.role === 'user').map(e => ({ entryId: e.id, text: userText(e.message.content) })) });
  case 'switch_session': {
    if (JSON.parse(readFileSync(c.sessionPath, 'utf8').split('\n')[0]).cancelled) return respond(c, { cancelled: true });
    load(c.sessionPath); out({ type: 'extension_ui_request', id: 'new-widget', method: 'setWidget', widgetKey: 'project', widgetLines: [header.cwd] });
@@ -131,7 +137,7 @@ async function command(c) {
  case 'new_session': case 'clone': case 'fork': {
    if (cancelNext) { cancelNext = false; return respond(c, { cancelled: true }); }
    let copy = c.type === 'new_session' ? [] : branch(); let text;
-   if (c.type === 'fork') { const index = copy.findIndex(e => e.id === c.entryId); text = copy[index]?.message.content; copy = copy.slice(0, index); }
+   if (c.type === 'fork') { const index = copy.findIndex(e => e.id === c.entryId); text = userText(copy[index]?.message.content); copy = copy.slice(0, index); }
    fresh(copy); return respond(c, { cancelled: false, text });
  }
  case 'compact': {
@@ -156,6 +162,15 @@ async function command(c) {
    if (c.message === 'delayed') { controlledPrompt = c; return; }
    if (c.message === 'queued') { queued = ['Synthetic queued text']; return respond(c, { disposition: 'queued' }); }
    if (c.message === 'hold') { streaming = true; out({ type: 'agent_start' }); respond(c, { disposition: 'started' }); out({ type: 'agent_end', willRetry: true, messages: [] }); out({ type: 'auto_retry_start', attempt: 1 }); return; }
+   if (c.message === '/skill:review' || c.message.startsWith('/skill:review ')) {
+     const args = c.message.slice('/skill:review'.length).trim();
+     const text = skillPrompt + (args ? '\n\n' + args : '');
+     streaming = true; out({ type: 'agent_start' });
+     const user = { role: 'user', content: [{ type: 'text', text }, ...(c.images ?? [])], timestamp: 1000 + serial };
+     append(user); out({ type: 'message_start', message: user }); out({ type: 'message_end', message: user });
+     out({ type: 'agent_end', messages: [], willRetry: false }); settle();
+     return respond(c, { disposition: 'started' });
+   }
    if (c.message === 'fast') {
      streaming = true; out({ type: 'agent_start' });
      const user = { role: 'user', content: 'fast', timestamp: 100 + serial };

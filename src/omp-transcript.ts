@@ -1,6 +1,7 @@
 import { Container, type Component, type TUI } from '@oh-my-pi/pi-tui/tui';
 import { TranscriptContainer } from '@oh-my-pi/pi-tui/chrome/transcript-container';
 import { UserMessageComponent } from '@oh-my-pi/pi-tui/chat/user-message';
+import { SkillMessageComponent } from '@oh-my-pi/pi-tui/chat/skill-message';
 import { AssistantMessageComponent } from '@oh-my-pi/pi-tui/chat/assistant-message';
 import { ToolExecutionComponent } from '@oh-my-pi/pi-tui/chat/tool-execution';
 import { Markdown, fencedCode } from '@oh-my-pi/pi-tui/components/markdown';
@@ -16,6 +17,7 @@ import { fileRow } from '@oh-my-pi/pi-tui/tools/native-view';
 import { ensureThemeSync, getLanguageFromPath, getMarkdownTheme, getThemeEpoch, theme } from '@oh-my-pi/pi-tui/theme';
 import type { BackendState, ChatMessage, MessageBlock } from './contracts.js';
 import { toolSourceParts, type ToolSourcePart } from './tool-source.js';
+import { piSkillView } from './omp-skills.js';
 
 type ToolBlock = Extract<MessageBlock, { kind: 'tool' }>;
 
@@ -238,6 +240,31 @@ class PiAssistantMessage extends AssistantMessageComponent {
   }
 }
 
+/** Retain the user's native expansion choice when Pi revises a text block. */
+class PiSkillCard extends SkillMessageComponent {
+  expanded = false;
+  private readonly hasArgs: boolean;
+  private projection: { original: NativeNode; node: NativeNode } | undefined;
+  constructor(message: ConstructorParameters<typeof SkillMessageComponent>[0]) {
+    super(message);
+    this.hasArgs = Boolean(message.details?.args?.trim());
+  }
+  override describe(): NativeNode {
+    const original = super.describe();
+    if (!this.hasArgs || this.expanded || original.k !== 'card') return original;
+    if (this.projection?.original === original) return this.projection.node;
+    // The stock component omits the loaded body while collapsed. Preview only
+    // its remaining argument child so native card folding doesn't hide the draft.
+    const node: NativeNode = { ...original, p: { ...original.p, preview: { lines: 3 } } };
+    this.projection = { original, node };
+    return node;
+  }
+  override setExpanded(expanded: boolean): void {
+    this.expanded = expanded;
+    super.setExpanded(expanded);
+  }
+}
+
 /** One stable backend block slot, retaining the shared components while it streams. */
 class PiBlock extends Container {
   seen = 0;
@@ -246,6 +273,7 @@ class PiBlock extends Container {
   private thinking: Disclosure | undefined;
   private code: SharedCodeCell | undefined;
   private tool: PiToolCard | undefined;
+  private skill: PiSkillCard | undefined;
   private toolInput: unknown;
   private diff: SharedDiff | undefined;
   private live = false;
@@ -267,7 +295,7 @@ class PiBlock extends Container {
         (previous.name !== block.name || previous.status === 'interrupted' && block.status !== 'interrupted'));
     if (reconstruct) {
       // A sealed interrupted card cannot become live again. Preserve its native expansion choice.
-      this.expanded = this.tool?.expanded ?? this.thinking?.expanded ?? this.expanded;
+      this.expanded = this.tool?.expanded ?? this.thinking?.expanded ?? this.skill?.expanded ?? this.expanded;
       if (this.currentImageKey) {
         this.ui.imageBudget.release(this.currentImageKey);
         this.currentImageKey = undefined;
@@ -277,6 +305,7 @@ class PiBlock extends Container {
       this.thinking = undefined;
       this.code = undefined;
       this.tool = undefined;
+      this.skill = undefined;
       this.diff = undefined;
     }
     if (block.kind === 'tool') this.syncTool(block, previous?.kind === 'tool' ? previous : undefined);
@@ -304,8 +333,15 @@ class PiBlock extends Container {
       } else if (changed) this.markdown.setText(block.text);
       this.markdown.transientRenderCache = live;
     } else if (this.role === 'user') {
-      // The original user bubble is immutable; only an actually revised block replaces it.
-      if (changed) { this.disposeChildren(); this.addChild(new UserMessageComponent(block.text)); }
+      // Project only the canonical skill wrapper; source text/IDs remain untouched.
+      if (changed) {
+        this.expanded = this.skill?.expanded ?? this.expanded;
+        this.disposeChildren();
+        const skill = piSkillView(block.text);
+        this.skill = skill ? new PiSkillCard(skill) : undefined;
+        this.skill?.setExpanded(this.expanded);
+        this.addChild(this.skill ?? new UserMessageComponent(block.text));
+      }
     } else {
       if (!this.markdown) { this.markdown = new Markdown(block.text, 1, 0, getMarkdownTheme()); this.addChild(this.markdown); }
       else if (changed) this.markdown.setText(block.text);
@@ -346,6 +382,7 @@ class PiBlock extends Container {
     this.tool?.setExpanded(expanded);
     this.thinking?.setExpanded(expanded);
     this.code?.setExpanded(expanded);
+    this.skill?.setExpanded(expanded);
   }
 
   override dispose(): void {

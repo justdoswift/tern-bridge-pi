@@ -53,7 +53,7 @@ pi
 | 发送消息 | `Enter` |
 | 换行 | `Shift+Enter` 或 `Alt+Enter` |
 | 粘贴文字或图片（macOS） | `⌘V` |
-| 展开 / 收起工具输出与思考 | `Ctrl+O` |
+| 展开 / 收起工具输出、思考与 skill 内容 | `Ctrl+O` |
 | 停止任务 / 关闭当前面板 | `Esc` |
 | 清空草稿并请求停止任务 | `Ctrl+C` |
 | 退出插件、返回终端 | 连按两次 `Ctrl+C` |
@@ -77,6 +77,8 @@ pi
 | 查看操作 / 退出 | `/help` / `/quit` |
 
 如果 Pi 扩展占用了同名命令，使用 `/bridge:名称`，例如 `/bridge:sessions`，即可打开插件自己的操作。
+
+菜单会列出 Pi 提供的 skill，例如 `/skill:review`。选择后可继续填写要求，再按 `Enter` 发送。会话里默认显示紧凑的 skill 卡片和要求摘要，不铺开整篇说明；点击卡片标题或按 `Ctrl+O` 查看全文。折叠只影响显示，不删减模型收到的内容，也不修改已保存的历史。
 
 **分叉和复制会话不会撤销文件修改。** 压缩上下文可能调用模型并消耗额度；重新连接不会自动重发上一条消息。
 
@@ -143,6 +145,8 @@ Use Pi in Tern with the original omp conversation UI. Pi keeps control of authen
 Build and install with the commands above, restart Tern, open a new local zsh pane and run `pi` (case-insensitive unless the name is already in use). Use `/` for actions, `Cmd+V` to paste images, `/quit` or two quick presses of `Ctrl+C` to exit, and `command pi` for the official CLI. macOS Apple Silicon is the verified platform; Linux remains unverified. Standard extension dialogs and text widgets are supported, not arbitrary custom terminal UI. Clipboard input is implemented, but the physical macOS clipboard path has not yet been verified end to end.
 
 Press `Enter` for immediate composer clearing and a pending message bubble. Pi's own message replaces it when received. Unconfirmed sends restore the original draft and images unless you have started a new draft; in that case, keep writing and recall the original with `↑` from an empty composer. Nothing is automatically resent.
+
+Skills such as `/skill:review` appear in the slash menu when Pi advertises them. Their loaded instructions stay collapsed in stock omp cards, with your arguments previewed; click the card header or press `Ctrl+O` to expand. Model inputs and saved history remain unchanged.
 
 ## 许可与致谢
 

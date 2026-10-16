@@ -1504,6 +1504,7 @@ var PiBridge = class {
 import { Container } from "@oh-my-pi/pi-tui/tui";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { UserMessageComponent } from "@oh-my-pi/pi-tui/chat/user-message";
+import { SkillMessageComponent } from "@oh-my-pi/pi-tui/chat/skill-message";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { ToolExecutionComponent } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { Markdown, fencedCode } from "@oh-my-pi/pi-tui/components/markdown";
@@ -1552,6 +1553,23 @@ function toolSourceParts(tool, args, languageForPath) {
     else parts.push({ kind: "plain", lines: [line] });
   }
   return hasSource ? parts : void 0;
+}
+
+// src/omp-skills.ts
+function piSkillView(text3) {
+  if (!text3.startsWith('<skill name="')) return;
+  const match = /^<skill name="([^"\r\n]+)" location="([^"\r\n]+)">\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]+))?$/.exec(text3);
+  if (!match || match[0] !== text3 || !/^References are relative to [^\r\n]+\.\n\n/.test(match[3])) return;
+  const args = match[4]?.trim() || void 0;
+  return {
+    role: "custom",
+    customType: "skill-prompt",
+    display: true,
+    attribution: "user",
+    timestamp: 0,
+    content: text3,
+    details: { name: match[1], path: match[2], args, lineCount: match[3].split("\n").length }
+  };
 }
 
 // src/omp-transcript.ts
@@ -1766,6 +1784,27 @@ var PiAssistantMessage = class extends AssistantMessageComponent {
     this.setExpandThinkingBlocks(expanded);
   }
 };
+var PiSkillCard = class extends SkillMessageComponent {
+  expanded = false;
+  hasArgs;
+  projection;
+  constructor(message) {
+    super(message);
+    this.hasArgs = Boolean(message.details?.args?.trim());
+  }
+  describe() {
+    const original = super.describe();
+    if (!this.hasArgs || this.expanded || original.k !== "card") return original;
+    if (this.projection?.original === original) return this.projection.node;
+    const node7 = { ...original, p: { ...original.p, preview: { lines: 3 } } };
+    this.projection = { original, node: node7 };
+    return node7;
+  }
+  setExpanded(expanded) {
+    this.expanded = expanded;
+    super.setExpanded(expanded);
+  }
+};
 var PiBlock = class extends Container {
   constructor(ui, cwd, role, imageKey, expanded) {
     super();
@@ -1781,6 +1820,7 @@ var PiBlock = class extends Container {
   thinking;
   code;
   tool;
+  skill;
   toolInput;
   diff;
   live = false;
@@ -1793,7 +1833,7 @@ var PiBlock = class extends Container {
     if (!changed && this.live === live) return false;
     const reconstruct = !previous || previous.kind !== block.kind || previous.kind === "tool" && block.kind === "tool" && (previous.name !== block.name || previous.status === "interrupted" && block.status !== "interrupted");
     if (reconstruct) {
-      this.expanded = this.tool?.expanded ?? this.thinking?.expanded ?? this.expanded;
+      this.expanded = this.tool?.expanded ?? this.thinking?.expanded ?? this.skill?.expanded ?? this.expanded;
       if (this.currentImageKey) {
         this.ui.imageBudget.release(this.currentImageKey);
         this.currentImageKey = void 0;
@@ -1803,6 +1843,7 @@ var PiBlock = class extends Container {
       this.thinking = void 0;
       this.code = void 0;
       this.tool = void 0;
+      this.skill = void 0;
       this.diff = void 0;
     }
     if (block.kind === "tool") this.syncTool(block, previous?.kind === "tool" ? previous : void 0);
@@ -1838,8 +1879,12 @@ var PiBlock = class extends Container {
       this.markdown.transientRenderCache = live;
     } else if (this.role === "user") {
       if (changed) {
+        this.expanded = this.skill?.expanded ?? this.expanded;
         this.disposeChildren();
-        this.addChild(new UserMessageComponent(block.text));
+        const skill = piSkillView(block.text);
+        this.skill = skill ? new PiSkillCard(skill) : void 0;
+        this.skill?.setExpanded(this.expanded);
+        this.addChild(this.skill ?? new UserMessageComponent(block.text));
       }
     } else {
       if (!this.markdown) {
@@ -1891,6 +1936,7 @@ var PiBlock = class extends Container {
     this.tool?.setExpanded(expanded);
     this.thinking?.setExpanded(expanded);
     this.code?.setExpanded(expanded);
+    this.skill?.setExpanded(expanded);
   }
   dispose() {
     if (this.currentImageKey) {

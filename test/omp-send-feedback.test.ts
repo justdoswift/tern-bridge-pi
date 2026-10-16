@@ -125,6 +125,22 @@ test('native sends clear immediately, reconcile Pi receipts and recover unconfir
       assert.equal(feedback.sync(), undefined);
       assert.equal((await peer.commands()).filter(c => c.type === 'prompt' && c.message === 'late').length, 1);
 
+      // The pending command is replaced by one compact canonical skill, never its full body.
+      editor.setText('/skill:review Check synthetic arguments'); editor.submit();
+      const skillSend = feedback.send(submission);
+      assert.equal(editor.getText(), '');
+      assert.ok(feedback.sync());
+      editor.setText('draft after skill');
+      await skillSend;
+      await until(() => !backend.state.needsInterrupt);
+      assert.equal(editor.getText(), 'draft after skill');
+      assert.equal(feedback.sync(), undefined);
+      const skillNodes = view();
+      assert.equal(skillNodes.filter(n => n.p?.role === 'omp.skill').length, 1);
+      assert.ok(JSON.stringify(skillNodes).includes('Check synthetic arguments'));
+      assert.equal(JSON.stringify(skillNodes).includes('SYNTHETIC_SKILL_BODY_SENTINEL'), false);
+      assert.equal(transcript.container.children.length, backend.state.messages.length);
+
       // A live receipt is authoritative even if transport dies before the prompt response.
       const interrupted = await begin();
       const interruptedResult = assert.rejects(interrupted.sent);
