@@ -1,4 +1,4 @@
-# Tern Bridge for Pi
+# Tern Pi
 
 **在 Tern 里用 Pi，保留 omp 的对话体验。**
 
