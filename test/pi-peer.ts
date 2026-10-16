@@ -48,7 +48,7 @@ const models = [
  { id: 'plain', provider: 'provider-two', name: 'Text model', reasoning: false, input: ['text'], contextWindow: 10000 }
 ];
 let model = models[0], thinkingLevel = 'medium', file, header, entries = [], leafId = null;
-let serial = 0, streaming = false, compacted = false, queued = [], cancelNext = false, late = null;
+let serial = 0, streaming = false, compacted = false, queued = [], cancelNext = false, late = null, controlledPrompt = null;
 const out = record => process.stdout.write(JSON.stringify(record) + '\n');
 const respond = (c, data, success = true) => out({ type: 'response', id: c.id, command: c.type, success, ...(success ? { data } : { error: 'synthetic-private-key-and-prompt' }) });
 function persist() { writeFileSync(file, [header, ...entries].map(JSON.stringify).join('\n') + '\n'); }
@@ -90,6 +90,16 @@ const interval = setInterval(() => {
  try {
   const next = readFileSync(control, 'utf8');
   if (next !== lastControl) { lastControl = next; for (const event of JSON.parse(next)) {
+    if (event.type === 'test_prompt_ack' && controlledPrompt) {
+      respond(controlledPrompt, { disposition: event.disposition ?? 'started' }, event.success !== false);
+      continue;
+    }
+    if (event.type === 'test_prompt_user' && controlledPrompt) {
+      streaming = true; out({ type: 'agent_start' });
+      const user = { role: 'user', content: [{ type: 'text', text: event.text ?? controlledPrompt.message }, ...(controlledPrompt.images ?? [])], timestamp: 1000 + serial };
+      append(user); out({ type: 'message_start', message: user }); out({ type: 'message_end', message: user });
+      continue;
+    }
     if (event.type === 'agent_settled') streaming = false;
     if (event.type === 'agent_start') streaming = true;
     if (event.type === 'test_exit') { process.stderr.write('PRIVATE SYNTHETIC STDERR'); process.exit(9); }
@@ -143,6 +153,7 @@ async function command(c) {
    if (c.message === '/cancel') { cancelNext = true; return respond(c, { disposition: 'handled' }); }
    if (c.message === '/handled') return respond(c, { disposition: 'handled' });
    if (c.message === 'late') { late = c; return; }
+   if (c.message === 'delayed') { controlledPrompt = c; return; }
    if (c.message === 'queued') { queued = ['Synthetic queued text']; return respond(c, { disposition: 'queued' }); }
    if (c.message === 'hold') { streaming = true; out({ type: 'agent_start' }); respond(c, { disposition: 'started' }); out({ type: 'agent_end', willRetry: true, messages: [] }); out({ type: 'auto_retry_start', attempt: 1 }); return; }
    if (c.message === 'fast') {

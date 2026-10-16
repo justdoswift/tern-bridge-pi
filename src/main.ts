@@ -5,7 +5,6 @@ import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { Composer } from '@oh-my-pi/pi-tui/prompt/composer';
 import { AttachmentChipsBand } from '@oh-my-pi/pi-tui/prompt/attachment-chips';
 import { CombinedAutocompleteProvider } from '@oh-my-pi/pi-tui/autocomplete';
-import { Text } from '@oh-my-pi/pi-tui/components/text';
 import { ErrorBannerComponent } from '@oh-my-pi/pi-tui/overlays/error-banner';
 import { EMPTY_NODE, node, span } from '@oh-my-pi/pi-tui/native/describe';
 import { encodeTspJson, TSP_PREFIX } from '@oh-my-pi/pi-tui/native/encode';
@@ -25,6 +24,7 @@ import { PiWelcome } from './omp-welcome.js';
 import { PiExtensionText } from './omp-extension-text.js';
 import { isPiWorking } from './work-state.js';
 import { PiImageComposer, imageAdmissionError, type ImageSubmission } from './omp-images.js';
+import { PiSendFeedback } from './omp-send-feedback.js';
 import { dictionary } from './i18n.js';
 import { commandEntries, routeCommand } from './omp-commands.js';
 
@@ -85,10 +85,10 @@ async function run(): Promise<void> {
   let appliedEditorRequest: string | undefined;
   let editorSession: string | null | undefined;
   const widgetComponents = new Map<string, PiExtensionText>();
-  const notice = new Text('');
+  const notice = new PiExtensionText('', 0, 0);
   const welcome = new PiWelcome(locale);
   const composer = new Composer({ preferences: { quiet: true, spellingAutocomplete: 'off', spellingTypoDetection: false }, exit: code => { process.exitCode = code; void shutdown(); } });
-  const backend = new PiBridge({ cwd, dataDir, sessionDir: values['session-dir'], execPath: values.pi ?? (typeof preferences.piPath === 'string' ? preferences.piPath : undefined), onChange: changed });
+  const backend = new PiBridge({ cwd, dataDir, sessionDir: values['session-dir'], execPath: values.pi ?? (typeof preferences.piPath === 'string' ? preferences.piPath : undefined), onChange: changed, onUserMessage: () => sendFeedback.recorded() });
   const surfaceOpen = `${TSP_PREFIX}o;`;
   const writeNative = composer.ui.terminal.write.bind(composer.ui.terminal);
   composer.ui.terminal.write = data => {
@@ -119,6 +119,14 @@ async function run(): Promise<void> {
     locale: () => locale, currentSession: () => backend.state.session?.id ?? null,
     cwd: () => backend.state.session?.cwd ?? cwd, onChange: changed, onError: report,
     onSubmit: submission => { void perform(() => submit(submission)); },
+  });
+  const sendFeedback = new PiSendFeedback(backend, images, {
+    locale: () => locale, onChange: changed,
+    onRecovery: restored => {
+      backend.state.notice = restored
+        ? text('消息尚未确认，已恢复草稿。', 'The message was not confirmed. Your draft has been restored.')
+        : text('消息尚未确认，当前草稿已保留；输入框为空时按 ↑ 可找回原消息。', 'The message was not confirmed. Your new draft is unchanged; press ↑ in an empty composer to recall the original.');
+    },
   });
   composer.editor.onEscape = () => { void perform(() => busy() ? backend.interrupt() : Promise.resolve()); };
   const clearOrExit = composer.editor.onClear;
@@ -154,6 +162,7 @@ async function run(): Promise<void> {
       [data-role='pi.extension.text'], [data-role='pi.extension.text'] .sf-text {
         font-family: var(--sans); font-size: 12px; line-height: 18px; color: var(--sf-c-muted);
       }
+      [data-role='pi.send.status'] { font-family: var(--sans); font-size: 12px; color: var(--sf-c-muted); }
       [data-role='pi.extension.status'] {
         font-family: var(--sans); font-size: 11px; line-height: 18px; color: var(--sf-c-muted);
         min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -242,7 +251,7 @@ async function run(): Promise<void> {
     for (const key of widgetComponents.keys()) {
       if (!b.widgets.some(widget => widget.key === key)) widgetComponents.delete(key);
     }
-    transcript.sync(b);
+    transcript.sync(b, sendFeedback.sync());
     todos.sync(b, locale);
     working.sync(b, locale);
     const prompt = dialogs.syncPrompts();
@@ -296,6 +305,7 @@ async function run(): Promise<void> {
     const before = backend.state.session;
     const identity = [before?.id, before?.file];
     const transition = images.beginSessionChange();
+    sendFeedback.reset();
     try {
       await action();
       const after = backend.state.session;
@@ -317,7 +327,7 @@ async function run(): Promise<void> {
     submitting = true;
     changed();
     try {
-      await backend.send(message, () => { images.accept(submission); changed(); }, submission.images);
+      await sendFeedback.send(submission);
     } finally { submitting = false; changed(); }
   }
   async function command(name: string, argument?: string): Promise<void> {
@@ -391,6 +401,7 @@ async function run(): Promise<void> {
     pendingNew = null;
     composer.ui.terminal.setProgress(false);
     dialogs.dispose();
+    sendFeedback.reset();
     images.dispose();
     try { await backend.close(); }
     finally {

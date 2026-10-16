@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import type { BackendOptions, BackendState, BridgeBackend, ContextDetails, DialogResponse, ForkChoice, InputImage, ModelChoice, PendingDialog, SettingsPatch } from './contracts.js';
+import type { BackendOptions, BackendState, BridgeBackend, ContextDetails, DialogResponse, ForkChoice, InputImage, ModelChoice, PendingDialog, PromptDisposition, SettingsPatch } from './contracts.js';
 import { listPiSessions, readSessionHeader } from './pi-sessions.js';
 import { RpcError, RpcTransport, type RpcRecord } from './rpc-transport.js';
 import { SessionLock, SessionLockError } from './session-lock.js';
@@ -33,6 +33,7 @@ export class PiBridge implements BridgeBackend {
   private stopping = false;
   private submission = 0;
   private activity = 0;
+  private settledActivity = 0;
   private settingsVersion = 0;
   private nameActivity = 0;
   private thinkingActivity = 0;
@@ -119,7 +120,7 @@ export class PiBridge implements BridgeBackend {
     return { ...this.contextValue };
   }
 
-  async send(text: string, onAccepted: () => void, images: readonly InputImage[] = []): Promise<void> {
+  async send(text: string, onAccepted: (disposition: PromptDisposition) => void, images: readonly InputImage[] = []): Promise<void> {
     if (this.changing || this.sending || this.stopping || this.runActive || this.dialogs.length) throw new Error('Pi is busy. Stop or wait before sending another message.');
     const transport = this.rpc();
     if (!text.trim() && !images.length) throw new Error('Enter a message or attach an image before sending.');
@@ -145,8 +146,9 @@ export class PiBridge implements BridgeBackend {
         // Stop can race asynchronous extension/input preflight. A late acceptance is never replayed or allowed to retain a queue.
         await this.stopCommands(transport, scope); return;
       }
-      onAccepted();
-      if (disposition !== 'handled' && this.activity === beforeActivity) this.runActive = true;
+      onAccepted(disposition);
+      // Extension/status events during preflight do not mean the accepted turn finished.
+      if (disposition !== 'handled' && this.settledActivity <= beforeActivity) this.runActive = true;
       if (!this.runActive && !this.dialogs.length) { this.state.phase = 'idle'; this.state.needsInterrupt = false; this.state.workingState = null; }
       else { this.state.phase = this.dialogs.length ? 'question' : 'running'; this.state.needsInterrupt = true; }
       this.changed();
@@ -417,6 +419,7 @@ export class PiBridge implements BridgeBackend {
     if (event.type === 'extension_ui_request') { this.extensionUi(event); return; }
     this.bootstrapEvents?.push(event);
     this.transcript.apply(event); this.state.messages = this.transcript.messages;
+    if ((event.type === 'message_start' || event.type === 'message_end') && record(event.message).role === 'user') this.options.onUserMessage?.();
     switch (event.type) {
       case 'agent_start': case 'turn_start':
         this.runActive = true; this.state.workingState = 'thinking'; break;
@@ -433,6 +436,7 @@ export class PiBridge implements BridgeBackend {
         this.state.workingState = null; break;
       case 'agent_end': this.state.workingState = event.willRetry === true ? 'retrying' : null; break;
       case 'agent_settled':
+        this.settledActivity = this.activity;
         this.runActive = false; this.state.workingState = null;
         if (!this.changing && !this.bootstrapEvents) void this.refresh();
         break;

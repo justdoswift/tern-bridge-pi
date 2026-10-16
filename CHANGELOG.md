@@ -2,6 +2,8 @@
 
 ## 0.1.0 — Unreleased
 
+- 回车后立即清空输入框并显示原版 omp 待发送消息气泡；Pi 回传后使用真实消息替换，不重复展示。未确认的发送保留文字、图片及粘贴内容，恢复时不覆盖新草稿；扩展状态更新不再被误判为任务完成。
+- Clear the composer immediately and show a pending stock omp bubble; reconcile with Pi's actual message without duplicates. Recover unconfirmed text, images and pasted content without overwriting newer drafts; extension status updates no longer imply turn completion.
 - 修复连续两次 Ctrl+C 无法退出；保留原版 omp 的双击退出行为，并停止当前任务、清理未发送草稿。
 - TPS、缓存等扩展状态以小字号放到思考强度右侧，保留实时更新、主题颜色和完整悬停说明；文本小组件与输入框对齐。
 - Tern 本机 zsh 入口支持 `Pi`、`PI` 及混合大小写，保留已有 alias、function 和独立同名程序；README 改为安装与日常使用指南。

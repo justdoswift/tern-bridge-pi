@@ -50,6 +50,7 @@ interface SubmissionState extends Lifetime {
   readonly atomsRevision: number;
   readonly images: readonly ImageContent[];
   readonly historyText: string;
+  staged?: { revision: number; atomsRevision: number };
 }
 
 /** Native omp chips and paste serialization, with Pi's acceptance boundary. */
@@ -154,16 +155,39 @@ export class PiImageComposer {
     const submission: ImageSubmission = Object.freeze({ text, images });
     this.#submissions.set(submission, {
       ...this.#lifetime(), revision: this.editor.textRevision, atomsRevision: this.editor.atomsRevision,
-      images: [...this.editor.pendingImages], historyText: message,
+      images: [...this.editor.pendingImages], historyText: this.editor.getExpandedText(),
     });
     return submission;
   }
 
-  /** Only actual backend acceptance may commit history and clear this exact draft. */
+  /** Clear immediately, retaining the complete native draft in local ↑ navigation. */
+  stage(submission: ImageSubmission): boolean {
+    const state = this.#submissions.get(submission);
+    if (!state || state.staged || !this.#alive(state) ||
+      state.revision !== this.editor.textRevision || state.atomsRevision !== this.editor.atomsRevision) return false;
+    this.editor.clearDraftForRecall();
+    state.staged = { revision: this.editor.textRevision, atomsRevision: this.editor.atomsRevision };
+    this.options.onChange();
+    return true;
+  }
+
+  /** Restore only an untouched composer; newer input keeps the original in local recall. */
+  restore(submission: ImageSubmission): boolean {
+    const state = this.#submissions.get(submission);
+    this.#submissions.delete(submission);
+    if (!state?.staged || !this.#alive(state) || this.#pendingAttachments !== 0 ||
+      state.staged.revision !== this.editor.textRevision || state.staged.atomsRevision !== this.editor.atomsRevision) return false;
+    this.editor.setDraft(state.historyText, state.images);
+    this.options.onChange();
+    return true;
+  }
+
+  /** Acceptance commits this submission, never clearing a newer draft. */
   accept(submission: ImageSubmission): boolean {
     const state = this.#submissions.get(submission);
     this.#submissions.delete(submission);
     if (!state || !this.#alive(state)) return false;
+    if (state.staged) return true;
     if (state.revision !== this.editor.textRevision ||
       state.atomsRevision !== this.editor.atomsRevision || state.images.length !== this.editor.pendingImages.length ||
       state.images.some((image, index) => image !== this.editor.pendingImages[index])) {

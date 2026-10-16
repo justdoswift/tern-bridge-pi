@@ -58,7 +58,9 @@ pi
 | 清空草稿并请求停止任务 | `Ctrl+C` |
 | 退出插件、返回终端 | 连按两次 `Ctrl+C` |
 
-图片粘贴后不会自动发送；发送失败时保留草稿。图片能否被模型处理，取决于你在 Pi 中选择的模型。任务运行期间可以继续写草稿，不会自动排队发送。
+按 `Enter` 后，输入框立即清空，消息以原版 omp 气泡显示“发送中”；Pi 回传后改为正式消息，不重复展示。模型响应速度仍取决于 Pi 和服务商。
+
+未确认发送时会恢复原草稿（包括图片）。如果你已经开始写下一条，则保留新草稿；原消息可在输入框为空时按 `↑` 找回。图片粘贴后不会自动发送，是否能被模型处理取决于所选模型；任务运行期间写下的下一条草稿不会自动排队发送。
 
 ### 会话和设置
 
@@ -139,6 +141,8 @@ TPS、缓存等状态由你的 Pi 扩展提供，插件不会自行估算。Pi �
 Use Pi in Tern with the original omp conversation UI. Pi keeps control of authentication, models, tools, extensions and saved sessions; this bridge provides the interface.
 
 Build and install with the commands above, restart Tern, open a new local zsh pane and run `pi` (case-insensitive unless the name is already in use). Use `/` for actions, `Cmd+V` to paste images, `/quit` or two quick presses of `Ctrl+C` to exit, and `command pi` for the official CLI. macOS Apple Silicon is the verified platform; Linux remains unverified. Standard extension dialogs and text widgets are supported, not arbitrary custom terminal UI. Clipboard input is implemented, but the physical macOS clipboard path has not yet been verified end to end.
+
+Press `Enter` for immediate composer clearing and a pending message bubble. Pi's own message replaces it when received. Unconfirmed sends restore the original draft and images unless you have started a new draft; in that case, keep writing and recall the original with `↑` from an empty composer. Nothing is automatically resent.
 
 ## 许可与致谢
 

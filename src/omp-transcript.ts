@@ -376,7 +376,7 @@ export class PiTranscript {
 
   constructor(private readonly ui: TUI, private readonly cwd: string) { ensureThemeSync(); }
 
-  sync(state: BackendState): void {
+  sync(state: BackendState, pending?: Component): void {
     if (this.disposed) return;
     const sessionId = state.session?.id ?? null;
     if (this.sessionId !== sessionId) {
@@ -449,6 +449,11 @@ export class PiTranscript {
     }
     for (const [id, entry] of this.messages) {
       if (entry.seen !== epoch) { entry.container.dispose(); this.messages.delete(id); }
+    }
+    if (pending) {
+      if (!order && this.container.children[messageIndex] !== pending) order = this.container.children.slice(0, messageIndex);
+      order?.push(pending);
+      messageIndex++;
     }
     if (order || this.container.children.length !== messageIndex) {
       this.container.children = order ?? this.container.children.slice(0, messageIndex);

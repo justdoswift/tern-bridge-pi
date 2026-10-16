@@ -72,12 +72,13 @@ export interface BackendState {
   usage: MessageUsage | null;
 }
 export interface SettingsPatch { modelId?: string; reasoningEffort?: string }
+export type PromptDisposition = 'handled' | 'started' | 'queued';
 export interface BridgeBackend {
   readonly state: BackendState;
   open(sessionPath?: string): Promise<void>;
   sessions(all: boolean): Promise<SessionSummary[]>;
   contextDetails(): Promise<ContextDetails>;
-  send(text: string, onAccepted: () => void, images?: readonly InputImage[]): Promise<void>;
+  send(text: string, onAccepted: (disposition: PromptDisposition) => void, images?: readonly InputImage[]): Promise<void>;
   interrupt(): Promise<void>;
   resolveDialog(requestId: string, response: DialogResponse): Promise<void>;
   updateSettings(patch: SettingsPatch): Promise<void>;
@@ -95,4 +96,6 @@ export interface BackendOptions {
   /** Optional existing Pi session root; never a bridge-owned author store. */
   sessionDir?: string;
   onChange: () => void;
+  /** Live user-message receipt, never a history refresh or client-created message. */
+  onUserMessage?: () => void;
 }

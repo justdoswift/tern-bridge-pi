@@ -6,9 +6,8 @@ import { parseArgs, stripVTControlCharacters } from "node:util";
 import { Composer } from "@oh-my-pi/pi-tui/prompt/composer";
 import { AttachmentChipsBand } from "@oh-my-pi/pi-tui/prompt/attachment-chips";
 import { CombinedAutocompleteProvider } from "@oh-my-pi/pi-tui/autocomplete";
-import { Text as Text8 } from "@oh-my-pi/pi-tui/components/text";
 import { ErrorBannerComponent } from "@oh-my-pi/pi-tui/overlays/error-banner";
-import { EMPTY_NODE as EMPTY_NODE3, node as node5, span } from "@oh-my-pi/pi-tui/native/describe";
+import { EMPTY_NODE as EMPTY_NODE3, node as node6, span } from "@oh-my-pi/pi-tui/native/describe";
 import { encodeTspJson, TSP_PREFIX } from "@oh-my-pi/pi-tui/native/encode";
 import { actionButton as actionButton2 } from "@oh-my-pi/pi-tui/native/overlay";
 import { onNativeRenderingChange } from "@oh-my-pi/pi-tui/native/state";
@@ -754,6 +753,7 @@ var PiBridge = class {
   stopping = false;
   submission = 0;
   activity = 0;
+  settledActivity = 0;
   settingsVersion = 0;
   nameActivity = 0;
   thinkingActivity = 0;
@@ -892,8 +892,8 @@ var PiBridge = class {
         await this.stopCommands(transport, scope);
         return;
       }
-      onAccepted();
-      if (disposition !== "handled" && this.activity === beforeActivity) this.runActive = true;
+      onAccepted(disposition);
+      if (disposition !== "handled" && this.settledActivity <= beforeActivity) this.runActive = true;
       if (!this.runActive && !this.dialogs.length) {
         this.state.phase = "idle";
         this.state.needsInterrupt = false;
@@ -1296,6 +1296,7 @@ var PiBridge = class {
     this.bootstrapEvents?.push(event);
     this.transcript.apply(event);
     this.state.messages = this.transcript.messages;
+    if ((event.type === "message_start" || event.type === "message_end") && record(event.message).role === "user") this.options.onUserMessage?.();
     switch (event.type) {
       case "agent_start":
       case "turn_start":
@@ -1323,6 +1324,7 @@ var PiBridge = class {
         this.state.workingState = event.willRetry === true ? "retrying" : null;
         break;
       case "agent_settled":
+        this.settledActivity = this.activity;
         this.runActive = false;
         this.state.workingState = null;
         if (!this.changing && !this.bootstrapEvents) void this.refresh();
@@ -1583,9 +1585,9 @@ var PiToolCard = class extends ToolExecutionComponent {
         ...numberedCode(part.lines, { lang: part.lang })
       ], { gap: "xs", role: "omp.tool.search.file" }), `source-${index}`)];
     });
-    const node6 = { ...original, c: [...body, ...original.c.slice(1)] };
-    this.projection = { original, node: node6 };
-    return node6;
+    const node7 = { ...original, c: [...body, ...original.c.slice(1)] };
+    this.projection = { original, node: node7 };
+    return node7;
   }
   setExpanded(expanded) {
     this.expanded = expanded;
@@ -1911,7 +1913,7 @@ var PiTranscript = class {
   epoch = 0;
   expanded = false;
   disposed = false;
-  sync(state) {
+  sync(state, pending) {
     if (this.disposed) return;
     const sessionId = state.session?.id ?? null;
     if (this.sessionId !== sessionId) {
@@ -2000,6 +2002,11 @@ var PiTranscript = class {
         entry.container.dispose();
         this.messages.delete(id);
       }
+    }
+    if (pending) {
+      if (!order && this.container.children[messageIndex] !== pending) order = this.container.children.slice(0, messageIndex);
+      order?.push(pending);
+      messageIndex++;
     }
     if (order || this.container.children.length !== messageIndex) {
       this.container.children = order ?? this.container.children.slice(0, messageIndex);
@@ -2906,15 +2913,34 @@ var PiImageComposer = class {
       revision: this.editor.textRevision,
       atomsRevision: this.editor.atomsRevision,
       images: [...this.editor.pendingImages],
-      historyText: message
+      historyText: this.editor.getExpandedText()
     });
     return submission;
   }
-  /** Only actual backend acceptance may commit history and clear this exact draft. */
+  /** Clear immediately, retaining the complete native draft in local ↑ navigation. */
+  stage(submission) {
+    const state = this.#submissions.get(submission);
+    if (!state || state.staged || !this.#alive(state) || state.revision !== this.editor.textRevision || state.atomsRevision !== this.editor.atomsRevision) return false;
+    this.editor.clearDraftForRecall();
+    state.staged = { revision: this.editor.textRevision, atomsRevision: this.editor.atomsRevision };
+    this.options.onChange();
+    return true;
+  }
+  /** Restore only an untouched composer; newer input keeps the original in local recall. */
+  restore(submission) {
+    const state = this.#submissions.get(submission);
+    this.#submissions.delete(submission);
+    if (!state?.staged || !this.#alive(state) || this.#pendingAttachments !== 0 || state.staged.revision !== this.editor.textRevision || state.staged.atomsRevision !== this.editor.atomsRevision) return false;
+    this.editor.setDraft(state.historyText, state.images);
+    this.options.onChange();
+    return true;
+  }
+  /** Acceptance commits this submission, never clearing a newer draft. */
   accept(submission) {
     const state = this.#submissions.get(submission);
     this.#submissions.delete(submission);
     if (!state || !this.#alive(state)) return false;
+    if (state.staged) return true;
     if (state.revision !== this.editor.textRevision || state.atomsRevision !== this.editor.atomsRevision || state.images.length !== this.editor.pendingImages.length || state.images.some((image, index) => image !== this.editor.pendingImages[index])) {
       this.editor.addToHistory(state.historyText);
       return false;
@@ -3121,6 +3147,101 @@ function imageAdmissionError(error, locale) {
   }
 }
 
+// src/omp-send-feedback.ts
+import { Container as Container2 } from "@oh-my-pi/pi-tui/tui";
+import { UserMessageComponent as UserMessageComponent2 } from "@oh-my-pi/pi-tui/chat/user-message";
+import { Text as Text8 } from "@oh-my-pi/pi-tui/components/text";
+import { node as node5 } from "@oh-my-pi/pi-tui/native/describe";
+var SendStatus = class extends Text8 {
+  label = "";
+  describe(_cx) {
+    return node5("row", { justify: "end" }, [node5("text", { role: "pi.send.status", text: this.label })]);
+  }
+  update(label) {
+    this.label = label;
+    this.setText(label);
+  }
+};
+var PiSendFeedback = class {
+  constructor(backend, images, options) {
+    this.backend = backend;
+    this.images = images;
+    this.options = options;
+  }
+  pending;
+  sync() {
+    const pending = this.pending;
+    if (!pending) return;
+    if (!this.sameSession(pending) || pending.finished && !this.backend.state.needsInterrupt) {
+      this.reset();
+      return;
+    }
+    pending.status.update(this.options.locale() === "zh-CN" ? pending.accepted ? "\u5DF2\u53D1\u9001\uFF0C\u7B49\u5F85 Pi \u56DE\u663E\u2026" : "\u53D1\u9001\u4E2D\u2026" : pending.accepted ? "Sent; waiting for Pi\u2026" : "Sending\u2026");
+    return pending.visible ? pending.view : void 0;
+  }
+  /** Only live protocol events call this; loading historical messages cannot acknowledge a send. */
+  recorded() {
+    const pending = this.pending;
+    if (!pending || !this.sameSession(pending)) return;
+    pending.accepted = true;
+    this.images.accept(pending.submission);
+    this.hide(pending);
+    this.options.onChange();
+  }
+  async send(submission) {
+    if (!this.images.stage(submission)) throw new Error(this.options.locale() === "zh-CN" ? "\u8349\u7A3F\u5DF2\u66F4\u6539\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002" : "The draft changed. Please submit it again.");
+    this.reset();
+    const view = new Container2();
+    const status = new SendStatus("", 0, 0);
+    view.addChild(new UserMessageComponent2(submission.text, {
+      images: submission.images.map((image) => ({ type: "image", ...image }))
+    }));
+    view.addChild(status);
+    const pending = {
+      submission,
+      session: this.backend.state.session?.id,
+      file: this.backend.state.session?.file,
+      view,
+      status,
+      accepted: false,
+      finished: false,
+      visible: true
+    };
+    this.pending = pending;
+    this.options.onChange();
+    try {
+      await this.backend.send(submission.text, (disposition) => {
+        if (this.pending !== pending || !this.sameSession(pending)) return;
+        pending.accepted = true;
+        this.images.accept(submission);
+        if (disposition === "handled") this.hide(pending);
+        this.options.onChange();
+      }, submission.images);
+    } finally {
+      pending.finished = true;
+      if (this.pending === pending) {
+        if (!pending.accepted) {
+          if (this.sameSession(pending)) this.options.onRecovery(this.images.restore(submission));
+          this.reset();
+        }
+        this.options.onChange();
+      }
+    }
+  }
+  reset() {
+    if (this.pending) this.hide(this.pending);
+    this.pending = void 0;
+  }
+  hide(pending) {
+    if (!pending.visible) return;
+    pending.visible = false;
+    pending.view.dispose();
+  }
+  sameSession(pending) {
+    return pending.session === this.backend.state.session?.id && pending.file === this.backend.state.session?.file;
+  }
+};
+
 // src/omp-commands.ts
 var descriptions = {
   sessions: ["\u9009\u62E9\u5386\u53F2\u4F1A\u8BDD", "Saved sessions"],
@@ -3216,13 +3337,13 @@ async function run() {
   let appliedEditorRequest;
   let editorSession;
   const widgetComponents = /* @__PURE__ */ new Map();
-  const notice = new Text8("");
+  const notice = new PiExtensionText("", 0, 0);
   const welcome = new PiWelcome(locale);
   const composer = new Composer({ preferences: { quiet: true, spellingAutocomplete: "off", spellingTypoDetection: false }, exit: (code2) => {
     process.exitCode = code2;
     void shutdown();
   } });
-  const backend = new PiBridge({ cwd, dataDir, sessionDir: values["session-dir"], execPath: values.pi ?? (typeof preferences.piPath === "string" ? preferences.piPath : void 0), onChange: changed });
+  const backend = new PiBridge({ cwd, dataDir, sessionDir: values["session-dir"], execPath: values.pi ?? (typeof preferences.piPath === "string" ? preferences.piPath : void 0), onChange: changed, onUserMessage: () => sendFeedback.recorded() });
   const surfaceOpen = `${TSP_PREFIX}o;`;
   const writeNative = composer.ui.terminal.write.bind(composer.ui.terminal);
   composer.ui.terminal.write = (data) => {
@@ -3255,6 +3376,13 @@ async function run() {
     onError: report,
     onSubmit: (submission) => {
       void perform(() => submit(submission));
+    }
+  });
+  const sendFeedback = new PiSendFeedback(backend, images, {
+    locale: () => locale,
+    onChange: changed,
+    onRecovery: (restored) => {
+      backend.state.notice = restored ? text3("\u6D88\u606F\u5C1A\u672A\u786E\u8BA4\uFF0C\u5DF2\u6062\u590D\u8349\u7A3F\u3002", "The message was not confirmed. Your draft has been restored.") : text3("\u6D88\u606F\u5C1A\u672A\u786E\u8BA4\uFF0C\u5F53\u524D\u8349\u7A3F\u5DF2\u4FDD\u7559\uFF1B\u8F93\u5165\u6846\u4E3A\u7A7A\u65F6\u6309 \u2191 \u53EF\u627E\u56DE\u539F\u6D88\u606F\u3002", "The message was not confirmed. Your new draft is unchanged; press \u2191 in an empty composer to recall the original.");
     }
   });
   composer.editor.onEscape = () => {
@@ -3309,6 +3437,7 @@ async function run() {
       [data-role='pi.extension.text'], [data-role='pi.extension.text'] .sf-text {
         font-family: var(--sans); font-size: 12px; line-height: 18px; color: var(--sf-c-muted);
       }
+      [data-role='pi.send.status'] { font-family: var(--sans); font-size: 12px; color: var(--sf-c-muted); }
       [data-role='pi.extension.status'] {
         font-family: var(--sans); font-size: 11px; line-height: 18px; color: var(--sf-c-muted);
         min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3414,7 +3543,7 @@ async function run() {
     for (const key2 of widgetComponents.keys()) {
       if (!b.widgets.some((widget) => widget.key === key2)) widgetComponents.delete(key2);
     }
-    transcript.sync(b);
+    transcript.sync(b, sendFeedback.sync());
     todos.sync(b, locale);
     working.sync(b, locale);
     const prompt = dialogs.syncPrompts();
@@ -3438,7 +3567,7 @@ async function run() {
     if (key !== factsKey) {
       factsKey = key;
       const controls = ["error", "disconnected"].includes(b.phase) ? [actionButton2(t.reconnect, "status.retry", { key: "retry", title: t.reconnectHint })] : [];
-      const statuses = b.statuses.map((status) => node5("text", {
+      const statuses = b.statuses.map((status) => node6("text", {
         role: "pi.extension.status",
         spans: styledSpans(status.text),
         wrap: "none",
@@ -3446,7 +3575,7 @@ async function run() {
         title: stripVTControlCharacters(status.text)
       }, void 0, status.key));
       facts = {
-        context: b.context && b.context.limit > 0 ? node5("meter", {
+        context: b.context && b.context.limit > 0 ? node6("meter", {
           role: "omp.composer.context",
           style: "bar",
           actions: { click: "status.context" },
@@ -3456,7 +3585,7 @@ async function run() {
           title: `${t.context}: ${b.context.used.toLocaleString(locale)} / ${b.context.limit.toLocaleString(locale)}`
         }, void 0, "context") : EMPTY_NODE3,
         model: { spans: [span(`Pi \xB7 ${selected?.label || settings?.modelId || t.default}`)], title: t.model },
-        extras: node5("row", { role: "omp.composer.extras", grow: 1, gap: "sm", align: "center", min: { w: 0 } }, [...controls, ...statuses], "extras"),
+        extras: node6("row", { role: "omp.composer.extras", grow: 1, gap: "sm", align: "center", min: { w: 0 } }, [...controls, ...statuses], "extras"),
         usage: EMPTY_NODE3
       };
     }
@@ -3476,6 +3605,7 @@ async function run() {
     const before = backend.state.session;
     const identity = [before?.id, before?.file];
     const transition = images.beginSessionChange();
+    sendFeedback.reset();
     try {
       await action();
       const after = backend.state.session;
@@ -3500,10 +3630,7 @@ async function run() {
     submitting = true;
     changed();
     try {
-      await backend.send(message, () => {
-        images.accept(submission);
-        changed();
-      }, submission.images);
+      await sendFeedback.send(submission);
     } finally {
       submitting = false;
       changed();
@@ -3588,6 +3715,7 @@ async function run() {
     pendingNew = null;
     composer.ui.terminal.setProgress(false);
     dialogs.dispose();
+    sendFeedback.reset();
     images.dispose();
     try {
       await backend.close();
