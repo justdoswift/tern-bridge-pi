@@ -2,6 +2,8 @@
 
 ## 0.1.0 — Unreleased
 
+- 新增终端安装脚本：支持 `install`、`update`、`uninstall`，检查依赖后从 main 构建；更新构建成功才替换，卸载保留插件配置、账号和会话数据，不修改 Shell 配置。
+- Add a curl-friendly installer with install/update/uninstall actions, prerequisite checks and main-branch builds. Replace packages only after successful builds; preserve plugin settings, accounts, sessions and shell profiles.
 - Skill 消息改用原版 omp 折叠卡片，默认显示名称与附加要求摘要，点击或 Ctrl+O 展开全文；新消息和历史恢复采用相同展示，不改变原始消息、模型输入或图片。
 - Render skill messages as stock omp collapsed cards with name and argument previews; expand by clicking or Ctrl+O. Live and restored messages preserve original content, model inputs and images.
 - 回车后立即清空输入框并显示原版 omp 待发送消息气泡；Pi 回传后使用真实消息替换，不重复展示。未确认的发送保留文字、图片及粘贴内容，恢复时不覆盖新草稿；扩展状态更新不再被误判为任务完成。

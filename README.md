@@ -22,17 +22,17 @@
 
 - 支持原生程序界面的 [Tern](https://docs.stencil.so/tern/index.html)。
 - 已安装、完成模型认证且能正常使用的 **Pi CLI**。
-- **Bun 1.3.14+**，以及用于构建安装包的 **Node.js 22.19+ 和 npm**。
+- **Bun 1.3.14+**、**Node.js 22.19+ 和 npm**，以及 Git、curl、Bash。
 
-目前需要从源码构建。在准备使用插件的机器上执行：
+关闭已打开的 Pi 插件会话，在准备使用插件的机器上执行：
 
 ```sh
-git clone https://github.com/justdoswift/tern-bridge-pi.git
-cd tern-bridge-pi
-npm ci --ignore-scripts
-npm run package
-tern plugin install ./artifacts/package/tern-bridge-pi
+curl -fsSL https://raw.githubusercontent.com/justdoswift/tern-bridge-pi/main/install.sh | bash
 ```
+
+脚本默认执行 `install`：检查依赖、下载 `main`、在临时目录构建完整运行包，再调用 Tern 安装。缺少依赖会提示，不会替你安装系统软件、修改 Shell 配置或执行登录。已有插件不会被默认覆盖，请使用下方的 `update`。
+
+这条命令会执行远程代码；也可以先下载并审阅 [install.sh](https://github.com/justdoswift/tern-bridge-pi/blob/main/install.sh)，再运行 `bash install.sh`。
 
 安装后**重启 Tern，再新建一个本机 zsh 终端窗格**。在该窗格输入：
 
@@ -86,18 +86,21 @@ pi
 
 ## 更新与卸载
 
-更新前先退出已打开的 Pi 插件会话，在克隆的仓库目录执行：
+更新前先退出已打开的 Pi 插件会话，无需手动进入仓库：
 
 ```sh
-git pull --ff-only
-npm ci --ignore-scripts
-npm run package
-tern plugin install --force ./artifacts/package/tern-bridge-pi
+curl -fsSL https://raw.githubusercontent.com/justdoswift/tern-bridge-pi/main/install.sh | bash -s -- update
 ```
 
-更新后重启 Tern，再新建终端窗格。出现 “already installed” 时，使用上面的 `--force` 覆盖安装即可，不必先卸载。
+`update` 获取最新 `main`，构建成功后才通过 Tern 的 `--force` 替换插件；下载或构建失败不会动旧版。它也可以在尚未安装时安装。更新后重启 Tern，再新建终端窗格。开发用的链接安装不会被强行覆盖或自动解除链接。
 
-卸载：`tern plugin remove tern-bridge-pi`。退出客户端后执行，再新开终端窗格；**不会删除 Pi 的历史会话**。
+卸载：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/justdoswift/tern-bridge-pi/main/install.sh | bash -s -- uninstall
+```
+
+卸载只要求有 Tern，不要求 Node、npm、Bun 或 Pi CLI。它等同于本地执行 `tern plugin remove tern-bridge-pi`；**仅移除插件，保留插件配置、Pi 账号与历史会话，也不卸载 Pi CLI**。先退出插件会话，卸载后重启 Tern 并新建终端窗格。
 
 ## 常见问题
 
@@ -142,7 +145,9 @@ TPS、缓存等状态由你的 Pi 扩展提供，插件不会自行估算。Pi �
 
 Use Pi in Tern with the original omp conversation UI. Pi keeps control of authentication, models, tools, extensions and saved sessions; this bridge provides the interface.
 
-Build and install with the commands above, restart Tern, open a new local zsh pane and run `pi` (case-insensitive unless the name is already in use). Use `/` for actions, `Cmd+V` to paste images, `/quit` or two quick presses of `Ctrl+C` to exit, and `command pi` for the official CLI. macOS Apple Silicon is the verified platform; Linux remains unverified. Standard extension dialogs and text widgets are supported, not arbitrary custom terminal UI. Clipboard input is implemented, but the physical macOS clipboard path has not yet been verified end to end.
+Install with the curl command above; it requires Tern, an installed and authenticated Pi CLI, Bun 1.3.14+, Node.js 22.19+, npm, Git and Bash. The script builds `main` in a temporary directory, without installing system tools or changing shell profiles. Review [install.sh](https://github.com/justdoswift/tern-bridge-pi/blob/main/install.sh) before executing remote code. Use `bash -s -- update` to explicitly replace the package only after a successful build, or `bash -s -- uninstall` to remove it. Uninstall needs only Tern and preserves plugin data, accounts, sessions and the official CLI; `tern plugin remove tern-bridge-pi` also works offline. Linked development packages are never automatically unlinked.
+
+Restart Tern, open a new local zsh pane and run `pi` (case-insensitive unless the name is already in use). Use `/` for actions, `Cmd+V` to paste images, `/quit` or two quick presses of `Ctrl+C` to exit, and `command pi` for the official CLI. macOS Apple Silicon is the verified platform; Linux remains unverified. Standard extension dialogs and text widgets are supported, not arbitrary custom terminal UI. Clipboard input is implemented, but the physical macOS clipboard path has not yet been verified end to end.
 
 Press `Enter` for immediate composer clearing and a pending message bubble. Pi's own message replaces it when received. Unconfirmed sends restore the original draft and images unless you have started a new draft; in that case, keep writing and recall the original with `↑` from an empty composer. Nothing is automatically resent.
 
