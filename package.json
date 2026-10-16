@@ -2,6 +2,14 @@
   "name": "tern-bridge-pi",
   "version": "0.1.0",
   "private": true,
+  "description": "Pi conversations in Tern with original omp UI components.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justdoswift/tern-bridge-pi.git"
+  },
+  "homepage": "https://github.com/justdoswift/tern-bridge-pi#readme",
+  "bugs": { "url": "https://github.com/justdoswift/tern-bridge-pi/issues" },
   "type": "module",
   "engines": { "node": ">=22.19.0", "bun": ">=1.3.14" },
   "scripts": {

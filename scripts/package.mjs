@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const target = join(root, 'artifacts', 'package', 'tern-bridge-pi');
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
-for (const file of ['plugin.toml', 'host.luau', 'window.luau', 'README.md', 'CHANGELOG.md']) {
+for (const file of ['plugin.toml', 'host.luau', 'window.luau', 'README.md', 'CHANGELOG.md', 'LICENSE']) {
   await copyFile(join(root, file), join(target, file));
 }
 await cp(join(root, 'bin'), join(target, 'bin'), { recursive: true });

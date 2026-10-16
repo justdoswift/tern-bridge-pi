@@ -2,6 +2,8 @@
 
 让 **Pi** 在 Tern 中使用原版 omp UI：复用 `@oh-my-pi/pi-tui` 的 Composer、助手消息、工具卡片、图片附件、欢迎卡、会话选择器和扩展对话框。插件通过 Pi 的 JSONL RPC 绑定数据与操作，不抓取官方 TUI、不使用 WebView、不复制上游 UI 源码，也不运行 omp 的模型循环。
 
+[GitHub](https://github.com/justdoswift/tern-bridge-pi) · [问题反馈 / Issues](https://github.com/justdoswift/tern-bridge-pi/issues) · [Droid 版本](https://github.com/justdoswift/tern-bridge-droid)
+
 上游原生 surface 的默认标题固定为 `omp`；桥接只替换 surface-open 的标题元数据为 Pi，并保留原组件生成的消息、布局和输入协议，不修改上游依赖源码。
 
 ## 环境与安装
@@ -11,6 +13,8 @@
 - 自动命令入口针对 macOS/Linux 本机 zsh。Windows、远程窗格及其他 Shell 不注入入口。安装包包含平台原生模块，须在目标系统和架构重新构建；不能把 macOS arm64 包当成跨平台包。
 
 ```sh
+git clone https://github.com/justdoswift/tern-bridge-pi.git
+cd tern-bridge-pi
 npm ci --ignore-scripts
 npm run check
 npm test
@@ -90,4 +94,10 @@ Context details show Pi's aggregate estimate, including unknown values, not inve
 
 已在 macOS arm64、Tern 0.8.3、Bun 1.3.14 下验证。真实 Pi 1.2.0 的离线、隔离配置验证覆盖模型/思考元数据、历史与工作目录、上下文、重命名、新建、复制和分叉，未发送模型请求。45 项行为测试通过；实际 Tern 界面使用独立协议夹具检查原组件、代码着色、扩展输入/取消、会话恢复、图片附件与不支持图片的错误保留、失败后不重放、语言与窄窗格、工作状态、`pi` 同窗格启动及 Droid 共存。命令入口还验证参数/退出码透传、官方 CLI 绕过、原 ZDOTDIR 与 alias/function 保留。
 
-未访问或改动真实系统剪贴板；图片验证使用合成文件和原生附件组件，不代表物理 macOS 剪贴板的端到端验收。未调用真实付费模型、验证模型回答质量或实机验证 Linux；未安装到作者正常 Tern 配置或发布插件。The checks use isolated configuration and synthetic content; real-provider inference, the physical clipboard path and Linux remain unverified.
+未访问或改动真实系统剪贴板；图片验证使用合成文件和原生附件组件，不代表物理 macOS 剪贴板的端到端验收。未调用真实付费模型、验证模型回答质量或实机验证 Linux；验证仅安装到隔离的 Tern 配置，没有改动作者的正常配置。The checks use isolated configuration and synthetic content; real-provider inference, the physical clipboard path and Linux remain unverified.
+
+## 开源许可 / License
+
+插件自有代码采用 [MIT License](LICENSE)。`@oh-my-pi/pi-tui` 及其传递依赖保留各自的许可证；完整构建包保留原许可文件，汇总见 [`dist/THIRD_PARTY_NOTICES.txt`](dist/THIRD_PARTY_NOTICES.txt)。Pi、Tern 和 omp 的名称及商标权不属于本项目，本项目不表示官方关联或背书。
+
+The bridge's own code is MIT-licensed. Dependencies retain their original licenses; no third-party trademark rights or official affiliation are implied. Build from source on your target platform. Pi remains a separately installed CLI; this repository does not publish an npm package (`private: true` prevents accidental npm publication).
