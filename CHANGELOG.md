@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.1.1 — 2026-10-16
+
+- 插件设置页名称统一为 **Tern Pi**；插件 ID、终端命令、配置和会话行为不变。
+- Display the plugin as **Tern Pi** in settings; preserve the plugin ID, terminal commands, settings and session behavior.
+
+## 0.1.0 — Development baseline
 
 - 新增终端安装脚本：支持 `install`、`update`、`uninstall`，检查依赖后从 main 构建；更新构建成功才替换，卸载保留插件配置、账号和会话数据，不修改 Shell 配置。
 - Add a curl-friendly installer with install/update/uninstall actions, prerequisite checks and main-branch builds. Replace packages only after successful builds; preserve plugin settings, accounts, sessions and shell profiles.

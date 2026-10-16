@@ -34,7 +34,7 @@ const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' }, version: { type: 'boolean' },
 } });
 if (values.help || values.version) {
-  process.stdout.write(values.version ? 'tern-bridge-pi 0.1.0\n' :
+  process.stdout.write(values.version ? 'tern-bridge-pi 0.1.1\n' :
     'tern-bridge-pi — Pi in Tern native surfaces\n\n' +
     'Usage: bun dist/client.mjs [--cwd DIR] [--data-dir DIR] [--session FILE | --pick-session]\n' +
     '       [--pi PATH] [--session-dir DIR] [--locale zh-CN|en-US]\n\n' +
