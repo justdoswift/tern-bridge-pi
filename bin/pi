@@ -1,0 +1,63 @@
+#!/bin/sh
+set -eu
+
+fail() {
+	if [ "${TERN_PI_BRIDGE_LOCALE-}" = en-US ]; then
+		printf 'tern-bridge-pi: %s\n' "$2" >&2
+	else
+		printf 'tern-bridge-pi: %s\n' "$1" >&2
+	fi
+	exit "$3"
+}
+
+bridge_dir=${TERN_PI_BRIDGE_DIR-}
+if [ -z "$bridge_dir" ]; then
+	bridge_dir=$(CDPATH= cd -P "${0%/*}/.." && pwd -P)
+fi
+
+# A separate POSIX process resolves binaries, not the interactive zsh function.
+# No eval, profile writes, global PATH changes or command-line logging.
+resolve_binary() {
+	case "$1" in
+		*/*) binary=$1 ;;
+		*) binary=$(command -v "$1") || return 1 ;;
+	esac
+	[ -f "$binary" ] && [ -x "$binary" ] || return 1
+	case "$binary" in
+		/*) ;;
+		*) binary=$(pwd -P)/$binary ;;
+	esac
+	printf '%s\n' "$binary"
+}
+
+real_pi=$(resolve_binary "${TERN_PI_BRIDGE_PI:-pi}") ||
+	fail '找不到 Pi CLI。请先安装 Pi，或配置 piPath 后新开终端窗格。' \
+		'Cannot find the Pi CLI. Install Pi, or configure piPath and open a new terminal pane.' 127
+if [ "$real_pi" -ef "$0" ]; then
+	fail 'piPath 指向插件入口，请改为实际 Pi CLI 的路径。' \
+		'piPath points to the bridge entry. Set it to the actual Pi CLI executable.' 126
+fi
+
+# Every argument-bearing invocation, including --mode rpc, stays an official CLI
+# operation. Interactive flags such as --resume are not silently reinterpreted.
+bridge=0
+case "${TERM_PROGRAM-}" in
+	[Tt][Ee][Rr][Nn])
+		if [ "$#" -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ "${TERN_PI_BRIDGE_BYPASS-}" != 1 ]; then
+			bridge=1
+		fi ;;
+esac
+if [ "$bridge" -eq 0 ]; then
+	exec "$real_pi" "$@"
+fi
+
+[ -f "$bridge_dir/dist/client.mjs" ] ||
+	fail '插件缺少客户端文件，请重新构建并安装插件。' \
+		'The client bundle is missing. Rebuild and reinstall the plugin.' 1
+[ -n "${TERN_PI_BRIDGE_DATA-}" ] ||
+	fail '缺少插件数据目录，请重新打开 Tern 终端窗格。' \
+		'The plugin data directory is missing. Open a new Tern terminal pane.' 1
+bun=$(resolve_binary "${TERN_PI_BRIDGE_BUN:-bun}") ||
+	fail '找不到 Bun。请安装 Bun，或配置 bunPath 后新开终端窗格。' \
+		'Cannot find Bun. Install it, or configure bunPath and open a new terminal pane.' 127
+exec "$bun" "$bridge_dir/dist/client.mjs" --cwd . --data-dir "$TERN_PI_BRIDGE_DATA" --pi "$real_pi"

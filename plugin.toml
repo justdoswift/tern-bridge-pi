@@ -1,0 +1,8 @@
+schema = 1
+id = "tern-bridge-pi"
+name = "tern-bridge-pi"
+version = "0.1.0"
+description = "Pi conversations, tools, sessions and extension dialogs with original omp UI in Tern."
+icon = "sparkle"
+host = "host.luau"
+window = "window.luau"

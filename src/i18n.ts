@@ -1,0 +1,51 @@
+import type { Locale } from './contracts.js';
+
+const en = {
+  identity: 'Pi', untitled: 'Untitled session', sessions: 'Sessions',
+  welcomeHint: 'Enter a task or question to start a conversation.',
+  welcomeCommands: 'Commands', welcomeNewline: 'New line', welcomeDetails: 'Toggle details', welcomeStop: 'Stop task',
+  model: 'Model', reasoning: 'Thinking', default: 'Default', send: 'Send', stop: 'Stop',
+  imagePathInvalid: 'Cannot read this local image. Check the file path and permissions.',
+  imageInvalid: 'Paste a valid JPEG, PNG, GIF or WebP image.',
+  imageTooLarge: 'This image exceeds the 20 MiB attachment limit.',
+  imageClipboardFailed: 'Cannot read the clipboard. Copy the image again, then paste it into the message.',
+  imageUnsupportedModel: 'This Pi model does not support images. Choose an image-capable model or remove the images.',
+  imageEmptyDraft: 'Enter a message or paste an image before sending.',
+  context: 'Context', contextLoading: 'Loading context usage…',
+  contextFailed: 'Context usage is unavailable. Check the Pi CLI connection, then retry.',
+  contextUnavailable: 'Pi has not reported a context estimate. After compaction, it may remain unavailable until the next model response.',
+  contextAggregate: 'Reported context estimate', contextCapacity: 'Model context window',
+  contextPolicy: 'Pi reports aggregate usage, not a category breakdown or compaction threshold.',
+  autoCompaction: 'Automatic compaction', enabled: 'Enabled', disabled: 'Disabled', retry: 'Retry',
+  tasks: 'Tasks', working: 'Working…', workingThinking: 'Thinking…', workingCompaction: 'Compacting context…', workingRetry: 'Retrying…',
+  user: 'You', close: 'Close', cancel: 'Cancel', loading: 'Loading sessions…',
+  rename: 'Rename session', renameHint: 'Session title', compact: 'Compact context', fork: 'Fork from a user message',
+  reconnect: 'Reconnect session', reconnectHint: 'Reconnect only; your message will not be sent again.',
+  unknown: 'Not reported', language: 'Language',
+};
+type Dictionary = { [K in keyof typeof en]: string };
+const zh: Dictionary = {
+  identity: 'Pi', untitled: '未命名会话', sessions: '会话',
+  welcomeHint: '输入任务或问题，开始对话。',
+  welcomeCommands: '命令菜单', welcomeNewline: '换行', welcomeDetails: '展开/收起详情', welcomeStop: '停止任务',
+  model: '模型', reasoning: '思考强度', default: '默认', send: '发送', stop: '停止',
+  imagePathInvalid: '无法读取本地图片，请检查文件路径和读取权限。',
+  imageInvalid: '请粘贴有效的 JPEG、PNG、GIF 或 WebP 图片。',
+  imageTooLarge: '图片超过 20 MiB 附件上限。',
+  imageClipboardFailed: '无法读取剪贴板，请重新复制图片后粘贴到输入框。',
+  imageUnsupportedModel: '当前 Pi 模型不支持图片，请选择支持图片的模型，或移除图片后发送。',
+  imageEmptyDraft: '请输入消息或粘贴图片后再发送。',
+  context: '上下文', contextLoading: '正在读取上下文用量…',
+  contextFailed: '暂时无法读取上下文用量，请检查 Pi CLI 连接后重试。',
+  contextUnavailable: 'Pi 尚未提供上下文估算。压缩后，可能需要等下一次模型回复才能重新获取。',
+  contextAggregate: '已报告的上下文估算', contextCapacity: '模型上下文容量',
+  contextPolicy: 'Pi 仅提供总用量，不提供分类明细或压缩阈值。',
+  autoCompaction: '自动压缩', enabled: '已开启', disabled: '已关闭', retry: '重试',
+  tasks: '任务', working: '正在处理…', workingThinking: '思考中…', workingCompaction: '正在压缩上下文…', workingRetry: '正在重试…',
+  user: '你', close: '关闭', cancel: '取消', loading: '正在加载会话…',
+  rename: '重命名会话', renameHint: '会话名称', compact: '压缩上下文', fork: '从用户消息分叉',
+  reconnect: '重新连接会话', reconnectHint: '只重新连接，不会再次发送你的消息。',
+  unknown: '未提供', language: '语言',
+};
+
+export function dictionary(locale: Locale): Dictionary { return locale === 'zh-CN' ? zh : en; }
