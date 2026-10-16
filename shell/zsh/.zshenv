@@ -16,9 +16,15 @@ fi
 # or modifying PATH. `command pi` keeps the ordinary official CLI behavior.
 if [[ -o interactive ]]; then
 	_tern_pi_bridge_ready() {
-		if (( ! $+aliases[pi] && ! $+functions[pi] )); then
-			function pi { "$TERN_PI_BRIDGE_DIR/bin/pi" "$@" }
-		fi
+		'builtin' 'local' name canonical=${commands[pi]-}
+		for name in {p,P}{i,I}; do
+			(( $+aliases[$name] || $+functions[$name] )) && continue
+			# Preserve unrelated case-sensitive executables as well as user bindings.
+			if [[ "$name" != pi ]] && (( $+commands[$name] )) && [[ ! "${commands[$name]}" -ef "$canonical" ]]; then
+				continue
+			fi
+			functions[$name]='"$TERN_PI_BRIDGE_DIR/bin/pi" "$@"'
+		done
 		precmd_functions=("${(@)precmd_functions:#_tern_pi_bridge_ready}")
 		'builtin' 'unfunction' '_tern_pi_bridge_ready'
 		'builtin' 'return' 0

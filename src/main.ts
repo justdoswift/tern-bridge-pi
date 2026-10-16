@@ -1,7 +1,7 @@
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { parseArgs } from 'node:util';
+import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { Composer } from '@oh-my-pi/pi-tui/prompt/composer';
 import { AttachmentChipsBand } from '@oh-my-pi/pi-tui/prompt/attachment-chips';
 import { CombinedAutocompleteProvider } from '@oh-my-pi/pi-tui/autocomplete';
@@ -11,6 +11,7 @@ import { EMPTY_NODE, node, span } from '@oh-my-pi/pi-tui/native/describe';
 import { encodeTspJson, TSP_PREFIX } from '@oh-my-pi/pi-tui/native/encode';
 import { actionButton } from '@oh-my-pi/pi-tui/native/overlay';
 import { onNativeRenderingChange } from '@oh-my-pi/pi-tui/native/state';
+import { styledSpans } from '@oh-my-pi/pi-tui/native/spans';
 import { stopSharedSpinnerTicker } from '@oh-my-pi/pi-tui/chat/tool-execution';
 import type { ComposerFacts } from '@oh-my-pi/pi-tui/status-line/types';
 import type { Component } from '@oh-my-pi/pi-tui/tui';
@@ -21,6 +22,7 @@ import { PiDialogs } from './omp-dialogs.js';
 import { PiTodoHud } from './omp-todos.js';
 import { PiWorkingHud } from './omp-working.js';
 import { PiWelcome } from './omp-welcome.js';
+import { PiExtensionText } from './omp-extension-text.js';
 import { isPiWorking } from './work-state.js';
 import { PiImageComposer, imageAdmissionError, type ImageSubmission } from './omp-images.js';
 import { dictionary } from './i18n.js';
@@ -82,8 +84,7 @@ async function run(): Promise<void> {
   let autocompleteCommands = '';
   let appliedEditorRequest: string | undefined;
   let editorSession: string | null | undefined;
-  const widgetComponents = new Map<string, Text>();
-  const statuses = new Text('', 0, 0);
+  const widgetComponents = new Map<string, PiExtensionText>();
   const notice = new Text('');
   const welcome = new PiWelcome(locale);
   const composer = new Composer({ preferences: { quiet: true, spellingAutocomplete: 'off', spellingTypoDetection: false }, exit: code => { process.exitCode = code; void shutdown(); } });
@@ -120,9 +121,12 @@ async function run(): Promise<void> {
     onSubmit: submission => { void perform(() => submit(submission)); },
   });
   composer.editor.onEscape = () => { void perform(() => busy() ? backend.interrupt() : Promise.resolve()); };
+  const clearOrExit = composer.editor.onClear;
   composer.editor.onClear = () => {
+    clearOrExit?.();
+    if (closing) return;
+    composer.editor.clearDraft();
     if (busy()) void perform(() => backend.interrupt());
-    else composer.editor.clearDraft();
   };
   composer.editor.onExit = () => { void perform(() => command('quit')); };
   composer.editor.onSelectModel = composer.editor.onSelectModelTemporary = () => { void perform(() => command('model')); };
@@ -147,6 +151,13 @@ async function run(): Promise<void> {
       [data-role='omp.welcome'] [data-role='omp.welcome.tip'] { opacity: 1; animation: none; }
       [data-role='pi.welcome.wordmark'] { color: var(--accent); font-family: var(--sans); font-size: 48px; font-weight: 600; line-height: 56px; }
       [data-role='pi.welcome.shortcuts'] { justify-content: center; margin-top: 12px; font-family: var(--sans); font-size: 12px; }
+      [data-role='pi.extension.text'], [data-role='pi.extension.text'] .sf-text {
+        font-family: var(--sans); font-size: 12px; line-height: 18px; color: var(--sf-c-muted);
+      }
+      [data-role='pi.extension.status'] {
+        font-family: var(--sans); font-size: 11px; line-height: 18px; color: var(--sf-c-muted);
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
     `,
   })}\x1b\\`;
   const nativeChange = onNativeRenderingChange(on => {
@@ -224,14 +235,13 @@ async function run(): Promise<void> {
     }
     const widgets = b.widgets.map(widget => {
       let component = widgetComponents.get(widget.key);
-      if (!component) { component = new Text('', 0, 0); widgetComponents.set(widget.key, component); }
+      if (!component) { component = new PiExtensionText('', 0, 0); widgetComponents.set(widget.key, component); }
       component.setText(widget.lines.join('\n'));
       return { component, placement: widget.placement };
     });
     for (const key of widgetComponents.keys()) {
       if (!b.widgets.some(widget => widget.key === key)) widgetComponents.delete(key);
     }
-    statuses.setText(b.statuses.map(status => status.text).join('\n'));
     transcript.sync(b);
     todos.sync(b, locale);
     working.sync(b, locale);
@@ -239,7 +249,7 @@ async function run(): Promise<void> {
     composer.editor.disableSubmit = submitting || ['connecting', 'running', 'approval', 'question', 'stopping'].includes(b.phase) || b.needsInterrupt;
     composer.setRuntimeChildren([transcript.container, ...(banner ? [banner] : []), ...(b.notice ? [notice] : []),
       ...widgets.filter(widget => widget.placement === 'aboveEditor').map(widget => widget.component),
-      ...(b.statuses.length ? [statuses] : []), working, prompt ?? composer.editor,
+      working, prompt ?? composer.editor,
       ...widgets.filter(widget => widget.placement === 'belowEditor').map(widget => widget.component)]);
     if (prompt !== mountedPrompt) {
       mountedPrompt = prompt;
@@ -247,12 +257,16 @@ async function run(): Promise<void> {
     }
     const settings = b.session?.settings;
     const selected = b.models.find(model => model.id === settings?.modelId);
-    const key = JSON.stringify([locale, b.phase, b.context, b.session?.title, selected?.label, settings]);
+    const key = JSON.stringify([locale, b.phase, b.context, b.session?.title, selected?.label, settings, b.statuses]);
     if (key !== factsKey) {
       factsKey = key;
       // Keep recovery reachable when native width compression hides optional controls.
       const controls = ['error', 'disconnected'].includes(b.phase)
         ? [actionButton(t.reconnect, 'status.retry', { key: 'retry', title: t.reconnectHint })] : [];
+      const statuses = b.statuses.map(status => node('text', {
+        role: 'pi.extension.status', spans: styledSpans(status.text), wrap: 'none', max: { w: 180 },
+        title: stripVTControlCharacters(status.text),
+      }, undefined, status.key));
       facts = {
         context: b.context && b.context.limit > 0 ? node('meter', {
           role: 'omp.composer.context', style: 'bar', actions: { click: 'status.context' }, aria: t.context,
@@ -260,7 +274,7 @@ async function run(): Promise<void> {
           title: `${t.context}: ${b.context.used.toLocaleString(locale)} / ${b.context.limit.toLocaleString(locale)}`,
         }, undefined, 'context') : EMPTY_NODE,
         model: { spans: [span(`Pi · ${selected?.label || settings?.modelId || t.default}`)], title: t.model },
-        extras: node('row', { role: 'omp.composer.extras', grow: 1, gap: 'sm', align: 'center' }, controls, 'extras'),
+        extras: node('row', { role: 'omp.composer.extras', grow: 1, gap: 'sm', align: 'center', min: { w: 0 } }, [...controls, ...statuses], 'extras'),
         usage: EMPTY_NODE,
       };
     }

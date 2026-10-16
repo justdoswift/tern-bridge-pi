@@ -2,16 +2,17 @@
 import { readFile as readFile2, mkdir as mkdir2, writeFile as writeFile2, rename as rename2 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
 import { join as join3, resolve as resolve4 } from "node:path";
-import { parseArgs } from "node:util";
+import { parseArgs, stripVTControlCharacters } from "node:util";
 import { Composer } from "@oh-my-pi/pi-tui/prompt/composer";
 import { AttachmentChipsBand } from "@oh-my-pi/pi-tui/prompt/attachment-chips";
 import { CombinedAutocompleteProvider } from "@oh-my-pi/pi-tui/autocomplete";
-import { Text as Text7 } from "@oh-my-pi/pi-tui/components/text";
+import { Text as Text8 } from "@oh-my-pi/pi-tui/components/text";
 import { ErrorBannerComponent } from "@oh-my-pi/pi-tui/overlays/error-banner";
-import { EMPTY_NODE as EMPTY_NODE3, node as node4, span } from "@oh-my-pi/pi-tui/native/describe";
+import { EMPTY_NODE as EMPTY_NODE3, node as node5, span } from "@oh-my-pi/pi-tui/native/describe";
 import { encodeTspJson, TSP_PREFIX } from "@oh-my-pi/pi-tui/native/encode";
 import { actionButton as actionButton2 } from "@oh-my-pi/pi-tui/native/overlay";
 import { onNativeRenderingChange } from "@oh-my-pi/pi-tui/native/state";
+import { styledSpans } from "@oh-my-pi/pi-tui/native/spans";
 import { stopSharedSpinnerTicker } from "@oh-my-pi/pi-tui/chat/tool-execution";
 
 // src/backend.ts
@@ -1582,9 +1583,9 @@ var PiToolCard = class extends ToolExecutionComponent {
         ...numberedCode(part.lines, { lang: part.lang })
       ], { gap: "xs", role: "omp.tool.search.file" }), `source-${index}`)];
     });
-    const node5 = { ...original, c: [...body, ...original.c.slice(1)] };
-    this.projection = { original, node: node5 };
-    return node5;
+    const node6 = { ...original, c: [...body, ...original.c.slice(1)] };
+    this.projection = { original, node: node6 };
+    return node6;
   }
   setExpanded(expanded) {
     this.expanded = expanded;
@@ -2772,6 +2773,24 @@ var PiWelcome = class extends WelcomeComponent {
   }
 };
 
+// src/omp-extension-text.ts
+import { Text as Text7 } from "@oh-my-pi/pi-tui/components/text";
+import { node as node4 } from "@oh-my-pi/pi-tui/native/describe";
+var PiExtensionText = class extends Text7 {
+  source;
+  native;
+  describe(cx) {
+    const source = super.describe(cx);
+    if (source !== this.source) {
+      this.source = source;
+      this.native = node4("col", { role: "omp.hud.status" }, [
+        node4("col", { role: "pi.extension.text" }, [source])
+      ]);
+    }
+    return this.native;
+  }
+};
+
 // src/omp-images.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 import { constants } from "node:fs";
@@ -3197,8 +3216,7 @@ async function run() {
   let appliedEditorRequest;
   let editorSession;
   const widgetComponents = /* @__PURE__ */ new Map();
-  const statuses = new Text7("", 0, 0);
-  const notice = new Text7("");
+  const notice = new Text8("");
   const welcome = new PiWelcome(locale);
   const composer = new Composer({ preferences: { quiet: true, spellingAutocomplete: "off", spellingTypoDetection: false }, exit: (code2) => {
     process.exitCode = code2;
@@ -3242,9 +3260,12 @@ async function run() {
   composer.editor.onEscape = () => {
     void perform(() => busy() ? backend.interrupt() : Promise.resolve());
   };
+  const clearOrExit = composer.editor.onClear;
   composer.editor.onClear = () => {
+    clearOrExit?.();
+    if (closing) return;
+    composer.editor.clearDraft();
     if (busy()) void perform(() => backend.interrupt());
-    else composer.editor.clearDraft();
   };
   composer.editor.onExit = () => {
     void perform(() => command("quit"));
@@ -3285,6 +3306,13 @@ async function run() {
       [data-role='omp.welcome'] [data-role='omp.welcome.tip'] { opacity: 1; animation: none; }
       [data-role='pi.welcome.wordmark'] { color: var(--accent); font-family: var(--sans); font-size: 48px; font-weight: 600; line-height: 56px; }
       [data-role='pi.welcome.shortcuts'] { justify-content: center; margin-top: 12px; font-family: var(--sans); font-size: 12px; }
+      [data-role='pi.extension.text'], [data-role='pi.extension.text'] .sf-text {
+        font-family: var(--sans); font-size: 12px; line-height: 18px; color: var(--sf-c-muted);
+      }
+      [data-role='pi.extension.status'] {
+        font-family: var(--sans); font-size: 11px; line-height: 18px; color: var(--sf-c-muted);
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
     `
   })}\x1B\\`;
   const nativeChange = onNativeRenderingChange((on) => {
@@ -3377,7 +3405,7 @@ async function run() {
     const widgets = b.widgets.map((widget) => {
       let component = widgetComponents.get(widget.key);
       if (!component) {
-        component = new Text7("", 0, 0);
+        component = new PiExtensionText("", 0, 0);
         widgetComponents.set(widget.key, component);
       }
       component.setText(widget.lines.join("\n"));
@@ -3386,7 +3414,6 @@ async function run() {
     for (const key2 of widgetComponents.keys()) {
       if (!b.widgets.some((widget) => widget.key === key2)) widgetComponents.delete(key2);
     }
-    statuses.setText(b.statuses.map((status) => status.text).join("\n"));
     transcript.sync(b);
     todos.sync(b, locale);
     working.sync(b, locale);
@@ -3397,7 +3424,6 @@ async function run() {
       ...banner ? [banner] : [],
       ...b.notice ? [notice] : [],
       ...widgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => widget.component),
-      ...b.statuses.length ? [statuses] : [],
       working,
       prompt ?? composer.editor,
       ...widgets.filter((widget) => widget.placement === "belowEditor").map((widget) => widget.component)
@@ -3408,12 +3434,19 @@ async function run() {
     }
     const settings = b.session?.settings;
     const selected = b.models.find((model) => model.id === settings?.modelId);
-    const key = JSON.stringify([locale, b.phase, b.context, b.session?.title, selected?.label, settings]);
+    const key = JSON.stringify([locale, b.phase, b.context, b.session?.title, selected?.label, settings, b.statuses]);
     if (key !== factsKey) {
       factsKey = key;
       const controls = ["error", "disconnected"].includes(b.phase) ? [actionButton2(t.reconnect, "status.retry", { key: "retry", title: t.reconnectHint })] : [];
+      const statuses = b.statuses.map((status) => node5("text", {
+        role: "pi.extension.status",
+        spans: styledSpans(status.text),
+        wrap: "none",
+        max: { w: 180 },
+        title: stripVTControlCharacters(status.text)
+      }, void 0, status.key));
       facts = {
-        context: b.context && b.context.limit > 0 ? node4("meter", {
+        context: b.context && b.context.limit > 0 ? node5("meter", {
           role: "omp.composer.context",
           style: "bar",
           actions: { click: "status.context" },
@@ -3423,7 +3456,7 @@ async function run() {
           title: `${t.context}: ${b.context.used.toLocaleString(locale)} / ${b.context.limit.toLocaleString(locale)}`
         }, void 0, "context") : EMPTY_NODE3,
         model: { spans: [span(`Pi \xB7 ${selected?.label || settings?.modelId || t.default}`)], title: t.model },
-        extras: node4("row", { role: "omp.composer.extras", grow: 1, gap: "sm", align: "center" }, controls, "extras"),
+        extras: node5("row", { role: "omp.composer.extras", grow: 1, gap: "sm", align: "center", min: { w: 0 } }, [...controls, ...statuses], "extras"),
         usage: EMPTY_NODE3
       };
     }
